@@ -1,151 +1,199 @@
-# Dino Game (STM32F031) - Университетский проект
+# Dino Game (STM32F031) - University Project
 
-## 1. Что это за проект
+## 1. What this project is
 
-Это простая аркада Dino Runner на микроконтроллере STM32F031 (Nucleo F031K6). Игрок нажимает кнопку ВВЕРХ, чтобы динозавр прыгнул, и должен избегать препятствий. Игра включает меню, подсчет очков, звук, вывод в UART и индикатор LED.
-
----
-
-## 2. Как собрать и запустить
-
-1. Откройте проект в PlatformIO (VS Code).
-2. На плате Nucleo F031K6 проверьте, что питание и кабель USB подключены.
-3. Нажмите Build (или команду `platformio run`).
-4. Нажмите Upload (или команду `platformio run --target upload`).
-5. Откройте Serial Monitor (`platformio device monitor`) для вывода текста и команд.
-
-> **Важно**: Когда плата работает, на экран выводится меню. Нажмите кнопку `UP` или отправьте `s` по UART, чтобы начать.
+This is a simple Dino Runner arcade game running on the STM32F031 microcontroller (Nucleo F031K6). The player presses the UP button to make the dinosaur jump and must avoid obstacles. The game includes a menu, score tracking, sound, UART output, and an LED indicator.
 
 ---
 
-## 3. Файловая структура и за что отвечает
+## 2. How to build and run
 
-- `src/main.c` — основная логика игры:
-  - Инициализация тактов, прерываний, GPIO и UART.
-  - Основной цикл, обновление кадров, игровая логика состояния.
-  - Обработка входных кнопок и простых команд по UART.
-  - Рисование экрана (через функции библиотеки дисплея).
-- `src/display.c` — драйвер TFT дисплея:
-  - Инициализация SPI и дисплея.
-  - Рисование пикселя, линии, прямоугольника, круга.
-  - Функции `printText`, `putImage`, `fillRectangle`.
-- `src/display.h` — заголовок для драйвера дисплея.
-- `src/font5x7.h` — шрифт 5x7 для текста.
+1. Open the project in PlatformIO (VS Code).
+2. Make sure the Nucleo F031K6 board is powered and connected via USB.
+3. Click Build (or run `platformio run`).
+4. Click Upload (or run `platformio run --target upload`).
+5. Open the Serial Monitor (`platformio device monitor`) to view text output and send commands.
+
+> **Important**: When the board is running, the menu is displayed. Press the `UP` button or send `s` via UART to start.
 
 ---
 
-## 4. Как работает код (максимально подробно для любой группы)
+## 3. File structure and responsibilities
 
-### 4.1. Инициализация
+* `src/main.c` — main game logic:
 
-- `main()` вызывает `initClock()` (PLL на 48 МГц), `initSysTick()`, `setupIO()`, `initPWM()`.
-- В `setupIO()` происходит:
-  - Включение портов A и B.
-  - Инициализация дисплея (`display_begin()`).
-  - Инициализация UART: PA9 (TX), PA10 (RX).
-  - Настройка кнопок как входы с подтяжкой.
-  - Настройка LED на PB3 как выход.
+  * Initialization of clock, interrupts, GPIO, and UART.
+  * Main loop, frame updates, game state logic.
+  * Handling button input and simple UART commands.
+  * Rendering (via display library functions).
+* `src/display.c` — TFT display driver:
 
-### 4.2. Серийный порт (UART)
-
-- В функции `initSerial()` инициализируется USART1.
-- `serialWriteChar()` и `serialWriteString()` отправляют текст.
-- В цикле `main()` читаем вход UART (`serialAvailable()` + `serialReadChar()`):
-  - `s`/`S` — старт игры,
-  - `r`/`R` — рестарт после Game Over.
-
-### 4.3. Баланс переменных и состояний
-
-- `gameState` может быть:
-  - `STATE_MENU` — меню,
-  - `STATE_PLAYING` — игра,
-  - `STATE_GAME_OVER` — конец.
-- `frameCounter` инкрементируется каждые 30 мс.
-- `spawnWait` используется как генератор случайного интервала.
-- `random16()` делает простую псевдослучайную последовательность через сдвиги.
-
-### 4.4. Игровой цикл
-
-- В `while(1)`:
-  - Читаем UART команды.
-  - Если прошло >30 мс, обновляем кадр.
-  - В состоянии меню рисуем `drawMenu()`.
-  - В игровом состоянии:
-    - Нажатие UP — прыжок.
-    - Нажатия RIGHT/LEFT меняют скорость (дополнительный ввод).
-    - Вызываем `updateGame()` и `drawGame()`.
-  - В Game Over рисуем экран конца и включаем LED.
-
-### 4.5. Функция `updateGame()`
-
-- Сердце механики:
-  - Применяем гравитацию к `dinoVelocity`.
-  - Если играем, то спавним препятствия через случайный `spawnWait`.
-  - Обновляем X препятствий (двигаем влево на `gameSpeed`).
-  - Проверяем столкновение прямоугольником.
-  - Если объект вышел за экран, увеличиваем `score`, выводим в UART, повышаем скорость.
-
-### 4.6. Графика и HUD
-
-- `drawGame()` очищает экран и рисует:
-  - землю,
-  - динозавра (`putImage()`),
-  - активные препятствия,
-  - HUD: счет и скорость.
-
-### 4.7. Управление
-
-- Кнопки:
-  - UP (PA8) — прыжок / запуск / рестарт.
-  - RIGHT (PB4) — увеличить скорость (в игре).
-  - LEFT (PB5) — уменьшить скорость.
-- UART:
-  - `s` — старт,
-  - `r` — рестарт,
-  - Вывод статистики (score, события).
-
-### 4.8. Звук
-
-- Используем TIM2 CH4/PB1 в `initPWM()`.
-- `playBeep(frequency, duration)` меняет `ARR` и `CCR4`.
-- Звук проигрывается при прыжке, старте, Game Over.
+  * SPI and display initialization.
+  * Drawing pixel, line, rectangle, circle.
+  * Functions: `printText`, `putImage`, `fillRectangle`.
+* `src/display.h` — display driver header.
+* `src/font5x7.h` — 5x7 font for text.
 
 ---
 
-## 5. Как оценить по критериям (что уже сделано)
+## 4. How the code works (detailed explanation)
 
-| Критерий | Реализовано | Где смотреть |
-|---|---|---|
-| Code quality/comments | Да, есть комментарии + простая структура | `src/main.c` в функциях 
-| Gameplay | Да, меню/игра/счет/рекорд | `main()` + `updateGame()`
-| Дополнительные input | Да, RIGHT/LEFT + UART ввод | `setupIO()` + `main()`
-| Дополнительные output | Да, LED PB3 + UART вывод | `setLedState()` + `serialWriteString()`
-| Sprite/animation | Да, спрайт динозавра, препятствия | `drawGame()`
-| HUD / Score | Да | `drawGame()` + `printNumber` + UART
-| Main menu | Да | `drawMenu()`
-| Restart/replay | Да (UP + UART r) | `main()`
-| Random numbers | Да `random16()` и `spawnWait` | `updateGame()`
-| Serial input/output | Да | `initSerial()` + `main()`
-| Sound | Да (TIM2 PWM) | `playBeep()`
-| Демонстрация | Готово на экране + UART | `drawGameOver()` + `drawMenu()`
-| Объяснение кода | В этом README | весь файл
+### 4.1. Initialization
 
----
+* `main()` calls:
 
-## 6. Что делать дальше, если хотите улучшить перед защитой
+  * `initClock()` (PLL at 48 MHz),
+  * `initSysTick()`,
+  * `setupIO()`,
+  * `initPWM()`.
 
-1. Сделать плавный переход (fade) экрана при Game Over.
-2. Добавить мини-таблицу рекордов в EEPROM (или в RAM).
-3. Нарисовать несколько разных видов препятствий и/или более длинный спрайт динозавра.
-4. Реализовать усложнение: увеличение скорости через каждые N очков.
+* Inside `setupIO()`:
+
+  * Enable GPIO ports A and B.
+  * Initialize display (`display_begin()`).
+  * Initialize UART: PA9 (TX), PA10 (RX).
+  * Configure buttons as input with pull-up.
+  * Configure LED on PB3 as output.
 
 ---
 
-## 7. Быстрая справка по запуску игры
+### 4.2. Serial communication (UART)
 
-- `UP` — старт/прыжок.
-- `RIGHT` / `LEFT` — изменить скорость (в игре).
-- `r` по UART — вернуться в меню.
-- На экране отображается счет и текущая скорость.
+* `initSerial()` initializes USART1.
+* `serialWriteChar()` and `serialWriteString()` send data.
+* In the `main()` loop:
 
-Успехов на защите! Если хотите, сделаю резервное упрощенное видео-сценарий: "что показываем на защите" (блоки действий и что говорить).
+  * Read UART input using `serialAvailable()` and `serialReadChar()`.
+  * Commands:
+
+    * `s` / `S` — start game,
+    * `r` / `R` — restart after Game Over.
+
+---
+
+### 4.3. Variables and states
+
+* `gameState` values:
+
+  * `STATE_MENU` — menu,
+  * `STATE_PLAYING` — gameplay,
+  * `STATE_GAME_OVER` — game over.
+
+* `frameCounter` increments every 30 ms.
+
+* `spawnWait` controls random spawn intervals.
+
+* `random16()` generates pseudo-random values using bit shifts.
+
+---
+
+### 4.4. Game loop
+
+Inside `while(1)`:
+
+* Read UART commands.
+* If more than 30 ms passed → update frame.
+* In menu state → call `drawMenu()`.
+* In playing state:
+
+  * UP → jump.
+  * RIGHT/LEFT → adjust speed.
+  * Call `updateGame()` and `drawGame()`.
+* In Game Over:
+
+  * Draw end screen.
+  * Turn on LED.
+
+---
+
+### 4.5. `updateGame()` function
+
+Core game mechanics:
+
+* Apply gravity to `dinoVelocity`.
+* Spawn obstacles using random `spawnWait`.
+* Move obstacles left with `gameSpeed`.
+* Check collision using rectangle intersection.
+* If obstacle exits screen:
+
+  * Increase `score`,
+  * Print to UART,
+  * Increase game speed.
+
+---
+
+### 4.6. Graphics and HUD
+
+`drawGame()`:
+
+* Clears screen.
+* Draws:
+
+  * Ground,
+  * Dinosaur (`putImage()`),
+  * Obstacles,
+  * HUD (score and speed).
+
+---
+
+### 4.7. Controls
+
+Buttons:
+
+* UP (PA8) — jump / start / restart.
+* RIGHT (PB4) — increase speed (during gameplay).
+* LEFT (PB5) — decrease speed.
+
+UART:
+
+* `s` — start,
+* `r` — restart,
+* Outputs statistics (score, events).
+
+---
+
+### 4.8. Sound
+
+* Uses TIM2 CH4 / PB1 (`initPWM()`).
+* `playBeep(frequency, duration)` sets `ARR` and `CCR4`.
+* Sound plays on jump, start, and Game Over.
+
+---
+
+## 5. Evaluation criteria (what is already implemented)
+
+| Criterion             | Implemented                   | Where                                   |
+| --------------------- | ----------------------------- | --------------------------------------- |
+| Code quality/comments | Yes, structured and commented | `src/main.c`                            |
+| Gameplay              | Yes, menu/game/score          | `main()` + `updateGame()`               |
+| Additional input      | Yes, buttons + UART           | `setupIO()` + `main()`                  |
+| Additional output     | Yes, LED + UART               | `setLedState()` + `serialWriteString()` |
+| Sprite/animation      | Yes                           | `drawGame()`                            |
+| HUD / Score           | Yes                           | `drawGame()`                            |
+| Main menu             | Yes                           | `drawMenu()`                            |
+| Restart/replay        | Yes                           | `main()`                                |
+| Random numbers        | Yes                           | `random16()`                            |
+| Serial I/O            | Yes                           | `initSerial()`                          |
+| Sound                 | Yes                           | `playBeep()`                            |
+| Demo                  | Ready                         | display + UART                          |
+| Code explanation      | Yes                           | this README                             |
+
+---
+
+## 6. Possible improvements before defense
+
+1. Add screen fade transition on Game Over.
+2. Add a high-score table (EEPROM or RAM).
+3. Add multiple obstacle types and/or better dinosaur sprite.
+4. Increase difficulty progressively (speed scaling).
+
+---
+
+## 7. Quick start guide
+
+* `UP` — start / jump.
+* `RIGHT` / `LEFT` — adjust speed.
+* `r` via UART — return to menu.
+* Screen displays score and current speed.
+
+Good luck with your defense! If you want, I can also prepare a short presentation script (what to show and what to say).
