@@ -1,13 +1,7 @@
 #include <stm32f031x6.h>
-
-
-
-
-
-
-
-
 #include "display.h"
+#include "sound.h"
+#include "musical_notes.h"
 
 // Function declarations
 void initClock(void);
@@ -50,15 +44,14 @@ void resetGame();
 #define OBSTACLE_HEIGHT 16
 #define MAX_OBSTACLES 3
 #define GRAVITY 2
-#define JUMP_STRENGTH -30
+#define JUMP_STRENGTH -25
 #define SERIAL_BAUD 115200
 #define LED_PIN 3
-
 // Global variables
 volatile uint32_t milliseconds;
 uint8_t gameState = STATE_MENU;
 uint16_t score = 0;
-uint16_t gameSpeed = 5;
+uint16_t gameSpeed = 3;
 uint32_t frameCounter = 0;
 
 // Dinosaur jump variables
@@ -122,6 +115,7 @@ int main()
 	initClock();
 	initSysTick();
 	setupIO();
+	initSound();
 	initPWM();
 	randomSeed = 0xABCD1234 + milliseconds;
 	serialWriteString("DINO GAME START\r\n");
@@ -152,7 +146,7 @@ int main()
 				}
 			}
 		}
-	
+
 		// Frame rate limiting (update at ~30Hz)
 		if (milliseconds - lastFrameTime >= 30) {
 			lastFrameTime = milliseconds;
@@ -174,12 +168,19 @@ int main()
 				drawMenu();
 			}
 			else if (gameState == STATE_PLAYING) {
-				// Jump input (UP button)
+
+				// 🔴 Jump input (UP button) + LED мигание
 				if ((GPIOA->IDR & (1 << 8)) == 0 && !isJumping) {
 					isJumping = 1;
 					dinoVelocity = JUMP_STRENGTH;
 					playBeep(600, 80);
+
+					// LED мигает
+					setLedState(1);
+					delay(50);
+					setLedState(0);
 				}
+
 				// Speed control via buttons
 				if ((GPIOB->IDR & (1 << 4)) == 0) {
 					if (gameSpeed < 20) gameSpeed++;
@@ -189,12 +190,15 @@ int main()
 					if (gameSpeed > 2) gameSpeed--;
 					delay(10);
 				}
+
 				updateGame();
 				drawGame();
+
 				setLedState(0);
 			}
 			else if (gameState == STATE_GAME_OVER) {
 				setLedState(1);
+
 				// Check for restart (UP button)
 				if ((GPIOA->IDR & (1 << 8)) == 0) {
 					delay(20);
@@ -213,49 +217,29 @@ int main()
 }
 void initPWM()
 {
-    // PB1 будет использоваться для звука (PWM на TIM2_CH4)
-    RCC->APB1ENR |= (1 << 0);  // Включаем TIM2
-    RCC->AHBENR |= (1 << 18);  // Включаем порт B
-    
-    // Настраиваем PB1 как альтернативную функцию (AF5) для TIM2_CH4
-    GPIOB->MODER &= ~(3 << (1*2)); // Очистить режим
-    GPIOB->MODER |= (2 << (1*2));  // AF mode
-    GPIOB->AFR[0] &= ~(0xF << (1*4));
-    GPIOB->AFR[0] |= (5 << (1*4)); // AF5 для TIM2_CH4
-
-    // Настройка TIM2
-    TIM2->PSC = 3;            // Прескейлер (делает таймер медленнее)
-    TIM2->ARR = 1000;         // Частота PWM (будет меняться в playBeep)
-    TIM2->CCMR2 |= (6 << 12); // PWM mode 1 для CH4
-    TIM2->CCMR2 |= (1 << 11); // Preload enable
-    TIM2->CCER |= (1 << 12);  // Включаем вывод CH4
-    TIM2->CR1 |= (1 << 0);    // Старт таймера
+    // We do not use hardware PWM here. We use PF0 GPIO toggling for beep sound.
+    // This is simple and works with a small piezo buzzer connected to PF0 + and GND -.
 }
 
 void playBeep(uint32_t frequency, uint32_t duration)
 {
-    if(frequency == 0) {
-        TIM2->CCR4 = 0; // выключаем звук
+    if (frequency == 0 || duration == 0) {
+        TIM14->CR1 &= ~(1 << 0);
         return;
     }
 
-    uint32_t arr = 4000000 / frequency; // если таймер работает от 4MHz
-    TIM2->ARR = arr;
-    TIM2->CCR4 = arr / 2;  // 50% duty cycle
-
-    // Ждём duration миллисекунд
-    uint32_t endTime = milliseconds + duration;
-    while(milliseconds < endTime) {
-        __asm(" wfi "); // спим до следующего прерывания
+    playNote(frequency);
+    uint32_t end = milliseconds + duration;
+    while (milliseconds < end) {
+        __asm(" nop ");
     }
-
-    TIM2->CCR4 = 0; // выключаем звук
+    TIM14->CR1 &= ~(1 << 0);
 }
 
 void resetGame()
 {
 	score = 0;
-	gameSpeed = 5;
+	gameSpeed = 3;
 	dinoY = DINO_Y_GROUND;
 	dinoVelocity = 0;
 	isJumping = 0;
@@ -329,8 +313,8 @@ void updateGame()
 				serialWriteString(buff);
 				serialWriteString("\r\n");
 
-				// Increase difficulty gradually
-				if (score % 5 == 0 && gameSpeed < 20) {
+				// Increase difficulty gradually (не слишком быстро)
+				if (score % 4 == 0 && gameSpeed < 12) {
 					gameSpeed++;
 				}
 			}
